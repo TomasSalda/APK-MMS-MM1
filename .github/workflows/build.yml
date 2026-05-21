@@ -32,8 +32,12 @@ jobs:
           channel: 'stable'
 
       - name: Build APK with Flet
+        env:
+          FLET_PROJECT_NAME: "simulador_colas"
+          FLET_ORG: "com.tomas"
+          CI: "true"
         run: |
-          flet build apk --project-name "simulador_colas" --org "com.tomas" --no-interactive
+          flet build apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
