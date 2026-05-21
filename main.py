@@ -160,55 +160,77 @@ def main(page: ft.Page):
         
         page.update()
 
-    # --- GENERACIÓN DE INFORME PDF ---
-    def generar_pdf_reporte(e):
+    # --- NUEVA LOGICA MANEJO DE ARCHIVOS EN ANDROID (FILEPICKER) ---
+
+    # Esta función se activa cuando el usuario elige la ruta en la ventana nativa de Android
+    def procesar_guardado_pdf(e: ft.FilePickerResultEvent):
+        if not e.path:
+            return  # El usuario canceló o cerró la ventana de guardado
+        
+        try:
+            ruta_destino = e.path
+            doc = SimpleDocTemplate(ruta_destino, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            story.append(Paragraph("<b>INFORME TÉCNICO DE TRÁNSITO Y OPTIMIZACIÓN</b>", styles['Title']))
+            story.append(Spacer(1, 15))
+            story.append(Paragraph(f"<b>Modelo evaluado:</b> {dropdown_modelo.value}", styles['Normal']))
+            story.append(Spacer(1, 10))
+            
+            s_pdf = "1" if dropdown_modelo.value == "M/M/1" else txt_servidores.value
+
+            datos = [
+                ["Métrica Analizada", "Valor Calculado"],
+                ["Tasa de Llegada (lambda)", txt_lambda.value],
+                ["Tasa de Servicio (mu)", txt_mu.value],
+                ["Servidores Activos (s)", s_pdf],
+                ["Ocupación del Sistema (rho)", val_rho.value],
+                ["Usuarios en Cola (Lq)", val_lq.value],
+                ["Tiempo de Espera en Cola (Wq)", val_wq.value],
+                ["Tiempo Total en Agencia (W)", val_w.value]
+            ]
+            
+            tabla = Table(datos, colWidths=[200, 200])
+            tabla.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (1,0), colors.blue),
+                ('TEXTCOLOR', (0,0), (1,0), colors.whitesmoke),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTNAME', (0,0), (1,0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+                ('GRID', (0,0), (-1,-1), 1, colors.black),
+            ]))
+            
+            story.append(tabla)
+            story.append(Spacer(1, 20))
+            story.append(Paragraph(f"<b>Diagnóstico Operativo:</b> {lbl_alerta.value}", styles['Normal']))
+            
+            doc.build(story)
+
+            page.overlay.append(ft.SnackBar(content=ft.Text("¡PDF guardado exitosamente!"), open=True))
+            page.update()
+            
+        except Exception as error:
+            page.overlay.append(ft.SnackBar(content=ft.Text(f"Error al escribir el PDF: {str(error)}"), open=True))
+            page.update()
+
+    # Registramos e inyectamos el FilePicker en la capa overlay del celular
+    selector_guardado = ft.FilePicker(on_result=procesar_guardado_pdf)
+    page.overlay.append(selector_guardado)
+
+    # Función disparadora vinculada al botón visual
+    def iniciar_exportacion_pdf(e):
         if val_rho.value == "-":
             page.overlay.append(ft.SnackBar(ft.Text("Primero debes calcular métricas válidas."), open=True))
             page.update()
             return
 
-        nombre_archivo = "reporte_colas.pdf"
-        doc = SimpleDocTemplate(nombre_archivo, pagesize=letter)
-        styles = getSampleStyleSheet()
-        story = []
-        
-        story.append(Paragraph("<b>INFORME TÉCNICO DE TRÁNSITO Y OPTIMIZACIÓN</b>", styles['Title']))
-        story.append(Spacer(1, 15))
-        story.append(Paragraph(f"<b>Modelo evaluado:</b> {dropdown_modelo.value}", styles['Normal']))
-        story.append(Spacer(1, 10))
-        
-        s_pdf = "1" if dropdown_modelo.value == "M/M/1" else txt_servidores.value
-
-        datos = [
-            ["Métrica Analizada", "Valor Calculado"],
-            ["Tasa de Llegada (lambda)", txt_lambda.value],
-            ["Tasa de Servicio (mu)", txt_mu.value],
-            ["Servidores Activos (s)", s_pdf],
-            ["Ocupación del Sistema (rho)", val_rho.value],
-            ["Usuarios en Cola (Lq)", val_lq.value],
-            ["Tiempo de Espera en Cola (Wq)", val_wq.value],
-            ["Tiempo Total en Agencia (W)", val_w.value]
-        ]
-        
-        tabla = Table(datos, colWidths=[200, 200])
-        tabla.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (1,0), colors.blue),
-            ('TEXTCOLOR', (0,0), (1,0), colors.whitesmoke),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('FONTNAME', (0,0), (1,0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-            ('BACKGROUND', (0,1), (-1,-1), colors.beige),
-            ('GRID', (0,0), (-1,-1), 1, colors.black),
-        ]))
-        
-        story.append(tabla)
-        story.append(Spacer(1, 20))
-        story.append(Paragraph(f"<b>Diagnóstico Operativo:</b> {lbl_alerta.value}", styles['Normal']))
-        
-        doc.build(story)
-
-        page.overlay.append(ft.SnackBar(content=ft.Text(f"¡PDF creado con éxito como '{nombre_archivo}'!"), open=True))
-        page.update()
+        # Abre el gestor de archivos nativo pidiendo sugerencia de nombre
+        selector_guardado.save_file(
+            file_name="reporte_colas.pdf",
+            allowed_extensions=["pdf"]
+        )
 
     # --- ENSAMBLADO DE LA PANTALLA PRINCIPAL ---
     page.add(
@@ -227,7 +249,7 @@ def main(page: ft.Page):
                 txt_mu,
                 ft.Container(height=5),
                 
-                # SECCIÓN 2: Bloque corregido sustituyendo 'color' por 'bgcolor'
+                # SECCIÓN 2: Bloque de configuración
                 ft.Card(
                     content=ft.Container(
                         content=ft.Column([
@@ -242,7 +264,7 @@ def main(page: ft.Page):
                             )
                         ], spacing=10), padding=12
                     ),
-                    bgcolor=ft.Colors.BLUE_50 # ¡CORREGIDO AQUÍ!
+                    bgcolor=ft.Colors.BLUE_50
                 ),
                 
                 lbl_error,
@@ -288,7 +310,7 @@ def main(page: ft.Page):
                 ft.FilledButton(
                     "Exportar Informe Técnico (PDF)",
                     icon=ft.Icons.PICTURE_AS_PDF,
-                    on_click=generar_pdf_reporte,
+                    on_click=iniciar_exportacion_pdf,  # Vinculado a la función de guardado controlado
                     style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700),
                     width=280
                 )
