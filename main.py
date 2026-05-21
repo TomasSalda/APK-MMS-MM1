@@ -1,5 +1,10 @@
 import flet as ft
 import math
+import os
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
 def main(page: ft.Page):
     # --- CONFIGURACIÓN DE LA PÁGINA ---
@@ -155,93 +160,77 @@ def main(page: ft.Page):
         
         page.update()
 
-    # --- ELEMENTOS INTERNOS DE LA VENTANA EMERGENTE (VISTA DE INFORME) ---
-    cont_informe_dinamico = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO, height=450)
+    # --- NUEVA LOGICA MANEJO DE ARCHIVOS EN ANDROID (FILEPICKER) ---
 
-    dialogo_pdf = ft.AlertDialog(
-        title=ft.Row([
-            ft.Icon(ft.Icons.PICTURE_AS_PDF, color=ft.Colors.RED_600),
-            ft.Text("Vista Previa del Informe Técnico", size=16, weight=ft.FontWeight.BOLD)
-        ], alignment=ft.MainAxisAlignment.START),
-        content=ft.Container(
-            content=cont_informe_dinamico,
-            width=400,
-            padding=10
-        ),
-        actions=[
-            ft.TextButton("Cerrar Vista", on_click=lambda _: cerrar_informe())
-        ],
-        actions_alignment=ft.MainAxisAlignment.END
-    )
+    # Esta función se activa cuando el usuario elige la ruta en la ventana nativa de Android
+    def procesar_guardado_pdf(e: ft.FilePickerResultEvent):
+        if not e.path:
+            return  # El usuario canceló o cerró la ventana de guardado
+        
+        try:
+            ruta_destino = e.path
+            doc = SimpleDocTemplate(ruta_destino, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            story.append(Paragraph("<b>INFORME TÉCNICO DE TRÁNSITO Y OPTIMIZACIÓN</b>", styles['Title']))
+            story.append(Spacer(1, 15))
+            story.append(Paragraph(f"<b>Modelo evaluado:</b> {dropdown_modelo.value}", styles['Normal']))
+            story.append(Spacer(1, 10))
+            
+            s_pdf = "1" if dropdown_modelo.value == "M/M/1" else txt_servidores.value
 
-    def cerrar_informe():
-        dialogo_pdf.open = False
-        page.update()
+            datos = [
+                ["Métrica Analizada", "Valor Calculado"],
+                ["Tasa de Llegada (lambda)", txt_lambda.value],
+                ["Tasa de Servicio (mu)", txt_mu.value],
+                ["Servidores Activos (s)", s_pdf],
+                ["Ocupación del Sistema (rho)", val_rho.value],
+                ["Usuarios en Cola (Lq)", val_lq.value],
+                ["Tiempo de Espera en Cola (Wq)", val_wq.value],
+                ["Tiempo Total en Agencia (W)", val_w.value]
+            ]
+            
+            tabla = Table(datos, colWidths=[200, 200])
+            tabla.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (1,0), colors.blue),
+                ('TEXTCOLOR', (0,0), (1,0), colors.whitesmoke),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTNAME', (0,0), (1,0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+                ('GRID', (0,0), (-1,-1), 1, colors.black),
+            ]))
+            
+            story.append(tabla)
+            story.append(Spacer(1, 20))
+            story.append(Paragraph(f"<b>Diagnóstico Operativo:</b> {lbl_alerta.value}", styles['Normal']))
+            
+            doc.build(story)
 
-    # --- FUNCIÓN QUE CONSTRUYE EL DOCUMENTO EN PANTALLA ---
-    def mostrar_pdf_emergente(e):
+            page.overlay.append(ft.SnackBar(content=ft.Text("¡PDF guardado exitosamente!"), open=True))
+            page.update()
+            
+        except Exception as error:
+            page.overlay.append(ft.SnackBar(content=ft.Text(f"Error al escribir el PDF: {str(error)}"), open=True))
+            page.update()
+
+    # Registramos e inyectamos el FilePicker en la capa overlay del celular
+    selector_guardado = ft.FilePicker(on_result=procesar_guardado_pdf)
+    page.overlay.append(selector_guardado)
+
+    # Función disparadora vinculada al botón visual
+    def iniciar_exportacion_pdf(e):
         if val_rho.value == "-":
-            page.overlay.append(ft.SnackBar(content=ft.Text("Primero debes calcular métricas válidas."), open=True))
+            page.overlay.append(ft.SnackBar(ft.Text("Primero debes calcular métricas válidas."), open=True))
             page.update()
             return
 
-        s_pdf = "1" if dropdown_modelo.value == "M/M/1" else txt_servidores.value
-
-        # Limpiamos contenido previo de la ventana
-        cont_informe_dinamico.controls.clear()
-
-        # Recreamos la estructura del PDF de ReportLab usando componentes nativos limpios
-        cont_informe_dinamico.controls.extend([
-            ft.Container(
-                content=ft.Column([
-                    ft.Text("INFORME TÉCNICO DE TRÁNSITO Y OPTIMIZACIÓN", weight=ft.FontWeight.BOLD, size=14, color=ft.Colors.WHITE, text_align=ft.TextAlign.CENTER),
-                    ft.Text(f"Modelo evaluado: {dropdown_modelo.value}", size=12, color=ft.Colors.BLUE_100, text_align=ft.TextAlign.CENTER),
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                bgcolor=ft.Colors.BLUE_800,
-                padding=12,
-                border_radius=5,
-                alignment=ft.alignment.center
-            ),
-            ft.Divider(height=15, thickness=1),
-            
-            # Tabla de datos estructurada igual que el PDF
-            ft.DataTable(
-                columns=[
-                    ft.DataColumn(ft.Text("Métrica Analizada", weight=ft.FontWeight.BOLD, size=12)),
-                    ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD, size=12)),
-                ],
-                rows=[
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Tasa de Llegada (λ)")), ft.DataCell(ft.Text(txt_lambda.value))]),
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Tasa de Servicio (μ)")), ft.DataCell(ft.Text(txt_mu.value))]),
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Servidores Activos (s)")), ft.DataCell(ft.Text(s_pdf))]),
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Ocupación (rho)")), ft.DataCell(ft.Text(val_rho.value))]),
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Usuarios en Cola (Lq)")), ft.DataCell(ft.Text(val_lq.value))]),
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Tiempo en Cola (Wq)")), ft.DataCell(ft.Text(val_wq.value))]),
-                    ft.DataRow(cells=[ft.DataCell(ft.Text("Tiempo en Agencia (W)")), ft.DataCell(ft.Text(val_w.value))]),
-                ],
-                heading_row_color=ft.Colors.BLUE_GREY_100,
-                data_row_min_height=30,
-                divider_thickness=0.5
-            ),
-            ft.Divider(height=15, thickness=1),
-            
-            # Diagnóstico final al pie de página
-            ft.Text("Diagnóstico Operativo:", weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.BLUE_GREY_900),
-            ft.Container(
-                content=ft.Text(lbl_alerta.value, size=12, weight=ft.FontWeight.W_500),
-                padding=10,
-                bgcolor=ft.Colors.GREY_100,
-                border_radius=5,
-                border=ft.border.all(0.5, ft.Colors.GREY_400)
-            )
-        ])
-
-        # Abrimos la ventana de visualización en la interfaz
-        dialogo_pdf.open = True
-        page.update()
-
-    # Añadimos la ventana emergente al sistema de capas
-    page.overlay.append(dialogo_pdf)
+        # Abre el gestor de archivos nativo pidiendo sugerencia de nombre
+        selector_guardado.save_file(
+            file_name="reporte_colas.pdf",
+            allowed_extensions=["pdf"]
+        )
 
     # --- ENSAMBLADO DE LA PANTALLA PRINCIPAL ---
     page.add(
@@ -293,19 +282,17 @@ def main(page: ft.Page):
                 # SECCIÓN 3: Cuadro de Resultados
                 ft.Card(
                     content=ft.Container(
-                        content=ft.Container(
-                            content=ft.Column([
-                                ft.Text("📊 Indicadores de Eficiencia Calculados", weight=ft.FontWeight.BOLD, size=15),
-                                ft.Divider(height=5),
-                                ft.Row([ft.Text("Ocupación del Sistema (ρ):"), val_rho], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Row([ft.Text("Usuarios esperando en Fila (Lq):"), val_lq], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Row([ft.Text("Tiempo prom. en Fila (Wq):"), val_wq], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Row([ft.Text("Tiempo total en Agencia (W):"), val_w], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Text("Carga de Trabajo:", size=11, color=ft.Colors.GREY_700),
-                                progress_bar,
-                                lbl_alerta
-                            ], spacing=8), padding=15
-                        )
+                        content=ft.Column([
+                            ft.Text("📊 Indicadores de Eficiencia Calculados", weight=ft.FontWeight.BOLD, size=15),
+                            ft.Divider(height=5),
+                            ft.Row([ft.Text("Ocupación del Sistema (ρ):"), val_rho], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ft.Row([ft.Text("Usuarios esperando en Fila (Lq):"), val_lq], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ft.Row([ft.Text("Tiempo prom. en Fila (Wq):"), val_wq], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ft.Row([ft.Text("Tiempo total en Agencia (W):"), val_w], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            ft.Text("Carga de Trabajo:", size=11, color=ft.Colors.GREY_700),
+                            progress_bar,
+                            lbl_alerta
+                        ], spacing=8), padding=15
                     )
                 ),
 
@@ -321,9 +308,9 @@ def main(page: ft.Page):
                 ),
                 
                 ft.FilledButton(
-                    "Visualizar Informe de Resultados",
-                    icon=ft.Icons.MAIN_LAUNCH_PUBLIC,
-                    on_click=mostrar_pdf_emergente,
+                    "Exportar Informe Técnico (PDF)",
+                    icon=ft.Icons.PICTURE_AS_PDF,
+                    on_click=iniciar_exportacion_pdf,  # Vinculado a la función de guardado controlado
                     style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700),
                     width=280
                 )
