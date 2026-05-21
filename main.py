@@ -160,7 +160,7 @@ def main(page: ft.Page):
         
         page.update()
 
-    # --- GENERACIÓN DE INFORME PDF CON RUTA INTELIGENTE ---
+    # --- GENERACIÓN DE INFORME PDF CON TRADUCCIÓN DE RUTA INTELIGENTE ---
     def generar_pdf_reporte(e):
         if val_rho.value == "-":
             page.overlay.append(ft.SnackBar(content=ft.Text("Primero debes calcular métricas válidas."), open=True))
@@ -168,17 +168,24 @@ def main(page: ft.Page):
             return
 
         nombre_archivo = "reporte_colas.pdf"
-        
-        # Lista ordenada de rutas donde intentaremos guardar el archivo en Android
-        rutas_a_intentar = [
-            os.path.join("/storage/emulated/0/Download", nombre_archivo), # Ruta estándar de Descargas
-            os.path.join("/sdcard/Download", nombre_archivo),             # Ruta alternativa de Descargas
-            nombre_archivo                                                # Fallback (Almacenamiento interno privado)
-        ]
+        rutas_a_intentar = []
+
+        # TRADUCCIÓN DINÁMICA DE RUTAS BASADA EN EL SISTEMA OPERATIVO
+        if page.platform == ft.PagePlatform.ANDROID:
+            # En Android, la prioridad absoluta es la carpeta interna segura (page.data_dir) para evitar bloqueos
+            if page.data_dir:
+                rutas_a_intentar.append(os.path.join(page.data_dir, nombre_archivo))
+            rutas_a_intentar.append(os.path.join("/storage/emulated/0/Download", nombre_archivo))
+            rutas_a_intentar.append(os.path.join("/sdcard/Download", nombre_archivo))
+        else:
+            # En Windows / Escritorio, intentará guardarlo en la carpeta de descargas del usuario o localmente
+            ruta_descargas_pc = os.path.join(os.path.expanduser("~"), "Downloads", nombre_archivo)
+            rutas_a_intentar.append(ruta_descargas_pc)
+            rutas_a_intentar.append(nombre_archivo)
 
         ruta_final_exitosa = ""
 
-        # Bucle seguro: prueba cada ruta hasta que una funcione sin romper la app
+        # Bucle seguro para escribir el archivo PDF
         for ruta in rutas_a_intentar:
             try:
                 doc = SimpleDocTemplate(ruta, pagesize=letter)
@@ -220,15 +227,17 @@ def main(page: ft.Page):
                 
                 doc.build(story)
                 ruta_final_exitosa = ruta
-                break # Si se guardó correctamente, salimos del bucle
+                break  # Éxito: salimos del bucle
             except Exception:
-                continue # Si da error de permisos en una ruta, pasa a la siguiente
+                continue  # Si falla por permisos en una ruta, prueba la siguiente
 
-        # Mensaje personalizado según dónde se logró escribir el archivo
-        if "Download" in ruta_final_exitosa or "sdcard" in ruta_final_exitosa:
+        # Mensaje responsivo e informativo para el usuario
+        if "Download" in ruta_final_exitosa or "Downloads" in ruta_final_exitosa:
             texto_aviso = "¡PDF guardado con éxito en tu carpeta de Descargas!"
+        elif page.data_dir and page.data_dir in ruta_final_exitosa:
+            texto_aviso = "¡PDF guardado! Almacenado en la ruta interna segura de Android."
         else:
-            texto_aviso = "Guardado en almacenamiento interno privado (la carpeta Descargas está protegida)."
+            texto_aviso = f"¡PDF generado con éxito en: {ruta_final_exitosa}!"
 
         page.overlay.append(ft.SnackBar(content=ft.Text(texto_aviso), open=True))
         page.update()
@@ -311,7 +320,7 @@ def main(page: ft.Page):
                 ft.FilledButton(
                     "Exportar Informe Técnico (PDF)",
                     icon=ft.Icons.PICTURE_AS_PDF,
-                    on_click=generar_pdf_reporte, # Volvemos a apuntar a la función directa de ReportLab
+                    on_click=generar_pdf_reporte,
                     style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700),
                     width=280
                 )
