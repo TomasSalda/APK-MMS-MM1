@@ -160,87 +160,95 @@ def main(page: ft.Page):
         
         page.update()
 
-    # --- GENERACIÓN DE INFORME PDF CON TRADUCCIÓN DE RUTA INTELIGENTE ---
-    def generar_pdf_reporte(e):
+    # --- VENTANAS EMERGENTES DE CONFIRMACIÓN (DIALOGS) ---
+    lbl_resultado_dialogo = ft.Text(size=14)
+    
+    dialogo_exito = ft.AlertDialog(
+        title=ft.Text("🎉 ¡Proceso Completado!"),
+        content=lbl_resultado_dialogo,
+        actions=[
+            ft.TextButton("Cerrar", on_click=lambda _: cerrar_dialogo(dialogo_exito))
+        ]
+    )
+    
+    def cerrar_dialogo(dialogo):
+        dialogo.open = False
+        page.update()
+
+    # --- PROCESAMIENTO Y CREACIÓN REAL DEL PDF ---
+    def ejecutar_construccion_pdf(e: ft.FilePickerResultEvent):
+        if not e.path:
+            return  # El usuario canceló la ventana emergente de guardado
+
+        try:
+            # ReportLab escribe directamente en la ruta nativa que el usuario escogió
+            doc = SimpleDocTemplate(e.path, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            story.append(Paragraph("<b>INFORME TÉCNICO DE TRÁNSITO Y OPTIMIZACIÓN</b>", styles['Title']))
+            story.append(Spacer(1, 15))
+            story.append(Paragraph(f"<b>Modelo evaluado:</b> {dropdown_modelo.value}", styles['Normal']))
+            story.append(Spacer(1, 10))
+            
+            s_pdf = "1" if dropdown_modelo.value == "M/M/1" else txt_servidores.value
+
+            datos = [
+                ["Métrica Analizada", "Valor Calculado"],
+                ["Tasa de Llegada (lambda)", txt_lambda.value],
+                ["Tasa de Servicio (mu)", txt_mu.value],
+                ["Servidores Activos (s)", s_pdf],
+                ["Ocupación del Sistema (rho)", val_rho.value],
+                ["Usuarios en Cola (Lq)", val_lq.value],
+                ["Tiempo de Espera en Cola (Wq)", val_wq.value],
+                ["Tiempo Total en Agencia (W)", val_w.value]
+            ]
+            
+            tabla = Table(datos, colWidths=[200, 200])
+            tabla.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (1,0), colors.blue),
+                ('TEXTCOLOR', (0,0), (1,0), colors.whitesmoke),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTNAME', (0,0), (1,0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+                ('GRID', (0,0), (-1,-1), 1, colors.black),
+            ]))
+            
+            story.append(tabla)
+            story.append(Spacer(1, 20))
+            story.append(Paragraph(f"<b>Diagnóstico Operativo:</b> {lbl_alerta.value}", styles['Normal']))
+            
+            # Construcción del archivo final
+            doc.build(story)
+            
+            # Mostramos la ventana emergente de éxito informando dónde quedó
+            lbl_resultado_dialogo.value = f"El informe PDF ha sido generado y descargado exitosamente en:\n\n{e.path}"
+            dialogo_exito.open = True
+            page.update()
+
+        except Exception as ex:
+            lbl_error.value = f"Error al compilar el PDF: {str(ex)}"
+            page.update()
+
+    # --- ASOCIACIÓN DEL COMPONENTE PICKER ---
+    file_picker = ft.FilePicker(on_result=ejecutar_construccion_pdf)
+    page.overlay.extend([file_picker, dialogo_exito])
+
+    # --- ACTIVADOR DE LA VENTANA DE EXPORTACIÓN ---
+    def abrir_ventana_guardar(e):
         if val_rho.value == "-":
             page.overlay.append(ft.SnackBar(content=ft.Text("Primero debes calcular métricas válidas."), open=True))
             page.update()
             return
 
-        nombre_archivo = "reporte_colas.pdf"
-        rutas_a_intentar = []
-
-        # TRADUCCIÓN DINÁMICA DE RUTAS BASADA EN EL SISTEMA OPERATIVO
-        if page.platform == ft.PagePlatform.ANDROID:
-            # En Android, la prioridad absoluta es la carpeta interna segura (page.data_dir) para evitar bloqueos
-            if page.data_dir:
-                rutas_a_intentar.append(os.path.join(page.data_dir, nombre_archivo))
-            rutas_a_intentar.append(os.path.join("/storage/emulated/0/Download", nombre_archivo))
-            rutas_a_intentar.append(os.path.join("/sdcard/Download", nombre_archivo))
-        else:
-            # En Windows / Escritorio, intentará guardarlo en la carpeta de descargas del usuario o localmente
-            ruta_descargas_pc = os.path.join(os.path.expanduser("~"), "Downloads", nombre_archivo)
-            rutas_a_intentar.append(ruta_descargas_pc)
-            rutas_a_intentar.append(nombre_archivo)
-
-        ruta_final_exitosa = ""
-
-        # Bucle seguro para escribir el archivo PDF
-        for ruta in rutas_a_intentar:
-            try:
-                doc = SimpleDocTemplate(ruta, pagesize=letter)
-                styles = getSampleStyleSheet()
-                story = []
-                
-                story.append(Paragraph("<b>INFORME TÉCNICO DE TRÁNSITO Y OPTIMIZACIÓN</b>", styles['Title']))
-                story.append(Spacer(1, 15))
-                story.append(Paragraph(f"<b>Modelo evaluado:</b> {dropdown_modelo.value}", styles['Normal']))
-                story.append(Spacer(1, 10))
-                
-                s_pdf = "1" if dropdown_modelo.value == "M/M/1" else txt_servidores.value
-
-                datos = [
-                    ["Métrica Analizada", "Valor Calculado"],
-                    ["Tasa de Llegada (lambda)", txt_lambda.value],
-                    ["Tasa de Servicio (mu)", txt_mu.value],
-                    ["Servidores Activos (s)", s_pdf],
-                    ["Ocupación del Sistema (rho)", val_rho.value],
-                    ["Usuarios en Cola (Lq)", val_lq.value],
-                    ["Tiempo de Espera en Cola (Wq)", val_wq.value],
-                    ["Tiempo Total en Agencia (W)", val_w.value]
-                ]
-                
-                tabla = Table(datos, colWidths=[200, 200])
-                tabla.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (1,0), colors.blue),
-                    ('TEXTCOLOR', (0,0), (1,0), colors.whitesmoke),
-                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                    ('FONTNAME', (0,0), (1,0), 'Helvetica-Bold'),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-                    ('BACKGROUND', (0,1), (-1,-1), colors.beige),
-                    ('GRID', (0,0), (-1,-1), 1, colors.black),
-                ]))
-                
-                story.append(tabla)
-                story.append(Spacer(1, 20))
-                story.append(Paragraph(f"<b>Diagnóstico Operativo:</b> {lbl_alerta.value}", styles['Normal']))
-                
-                doc.build(story)
-                ruta_final_exitosa = ruta
-                break  # Éxito: salimos del bucle
-            except Exception:
-                continue  # Si falla por permisos en una ruta, prueba la siguiente
-
-        # Mensaje responsivo e informativo para el usuario
-        if "Download" in ruta_final_exitosa or "Downloads" in ruta_final_exitosa:
-            texto_aviso = "¡PDF guardado con éxito en tu carpeta de Descargas!"
-        elif page.data_dir and page.data_dir in ruta_final_exitosa:
-            texto_aviso = "¡PDF guardado! Almacenado en la ruta interna segura de Android."
-        else:
-            texto_aviso = f"¡PDF generado con éxito en: {ruta_final_exitosa}!"
-
-        page.overlay.append(ft.SnackBar(content=ft.Text(texto_aviso), open=True))
-        page.update()
+        # Despliega la ventana emergente del sistema para Guardar / Descargar / Compartir ruta
+        file_picker.save_file(
+            window_title="Guardar Informe PDF",
+            file_name="reporte_colas.pdf",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["pdf"]
+        )
 
     # --- ENSAMBLADO DE LA PANTALLA PRINCIPAL ---
     page.add(
@@ -320,7 +328,7 @@ def main(page: ft.Page):
                 ft.FilledButton(
                     "Exportar Informe Técnico (PDF)",
                     icon=ft.Icons.PICTURE_AS_PDF,
-                    on_click=generar_pdf_reporte,
+                    on_click=abrir_ventana_guardar,
                     style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700),
                     width=280
                 )
