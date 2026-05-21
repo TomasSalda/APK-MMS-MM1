@@ -160,12 +160,12 @@ def main(page: ft.Page):
         
         page.update()
 
-    # --- NUEVA LOGICA MANEJO DE ARCHIVOS EN ANDROID (FILEPICKER) ---
+    # --- MANEJO SEGURO DE ARCHIVOS EN ANDROID ---
 
-    # Esta función se activa cuando el usuario elige la ruta en la ventana nativa de Android
-    def procesar_guardado_pdf(e: ft.FilePickerResultEvent):
+    # Eliminamos el "ft.FilePickerResultEvent" para evitar el colapso de arranque
+    def procesar_guardado_pdf(e):
         if not e.path:
-            return  # El usuario canceló o cerró la ventana de guardado
+            return  # Cancelado por el usuario
         
         try:
             ruta_destino = e.path
@@ -215,18 +215,16 @@ def main(page: ft.Page):
             page.overlay.append(ft.SnackBar(content=ft.Text(f"Error al escribir el PDF: {str(error)}"), open=True))
             page.update()
 
-    # Registramos e inyectamos el FilePicker en la capa overlay del celular
+    # Instanciamos el FilePicker de forma limpia
     selector_guardado = ft.FilePicker(on_result=procesar_guardado_pdf)
     page.overlay.append(selector_guardado)
 
-    # Función disparadora vinculada al botón visual
     def iniciar_exportacion_pdf(e):
         if val_rho.value == "-":
             page.overlay.append(ft.SnackBar(ft.Text("Primero debes calcular métricas válidas."), open=True))
             page.update()
             return
 
-        # Abre el gestor de archivos nativo pidiendo sugerencia de nombre
         selector_guardado.save_file(
             file_name="reporte_colas.pdf",
             allowed_extensions=["pdf"]
@@ -310,7 +308,7 @@ def main(page: ft.Page):
                 ft.FilledButton(
                     "Exportar Informe Técnico (PDF)",
                     icon=ft.Icons.PICTURE_AS_PDF,
-                    on_click=iniciar_exportacion_pdf,  # Vinculado a la función de guardado controlado
+                    on_click=iniciar_exportacion_pdf,
                     style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700),
                     width=280
                 )
