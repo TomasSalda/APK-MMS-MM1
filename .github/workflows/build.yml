@@ -33,7 +33,7 @@ jobs:
 
       - name: Build APK with Flet
         run: |
-          flet build apk
+          flet build apk --project-name "simulador_colas" --org "com.tomas" --no-interactive
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
